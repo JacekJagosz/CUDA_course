@@ -1,0 +1,80 @@
+[Matrix Multiply Using CUDA] - Starting...
+GPU Device 0: "Turing" with compute capability 7.5
+
+MatrixA(320,320), MatrixB(640,320)
+Computing result using CUDA Kernel...
+done
+Performance= 158.78 GFlop/s, Time= 0.825 msec, Size= 131072000 Ops, WorkgroupSize= 1024 threads/block
+Checking computed result for correctness: Result = PASS
+
+Operating System Runtime API Statistics:
+
+ Time (%)  Total Time (ns)  Num Calls    Avg (ns)     Med (ns)    Min (ns)   Max (ns)     StdDev (ns)        Name
+ --------  ---------------  ---------  ------------  -----------  --------  -----------  -------------  --------------
+     57,0      477 215 558          5  95 443 111,0    343 761,0    14 672  475 956 714  212 713 745,0  sem_wait
+     36,0      300 525 980         15  20 035 065,0  1 137 811,0     1 953  100 143 487   36 304 398,0  poll
+      3,0       30 130 133        513      58 733,0      9 852,0     1 004    9 448 801      457 603,0  ioctl
+      2,0       19 309 248         40     482 731,0      2 782,0     1 108   19 187 909    3 033 383,0  fopen
+      0,0          950 812         31      30 671,0      2 414,0     1 961      692 978      123 317,0  mmap64
+      0,0          595 617         10      59 561,0     41 624,0    34 157      191 716       47 394,0  sem_timedwait
+      0,0          584 816         20      29 240,0      4 773,0     1 066      165 447       58 037,0  mmap
+      0,0          294 764         49       6 015,0      6 040,0     2 413       12 349        1 589,0  open64
+      0,0          132 102          5      26 420,0     26 066,0    17 943       33 581        6 194,0  pthread_create
+      0,0           49 054          5       9 810,0      7 480,0     3 054       23 823        8 363,0  fgets
+      0,0           17 575          5       3 515,0      2 721,0     2 396        5 062        1 276,0  open
+      0,0           16 744         12       1 395,0      1 109,0     1 005        3 228          623,0  fclose
+      0,0           13 721          5       2 744,0      2 495,0     1 528        5 232        1 449,0  munmap
+      0,0            9 603          2       4 801,0      4 801,0     4 163        5 440          903,0  socket
+      0,0            9 151          4       2 287,0      1 546,0     1 204        4 855        1 719,0  fread
+      0,0            8 373          6       1 395,0      1 191,0     1 003        2 031          479,0  write
+      0,0            6 786          5       1 357,0      1 301,0     1 122        1 829          287,0  read
+      0,0            6 100          1       6 100,0      6 100,0     6 100        6 100            0,0  connect
+      0,0            3 961          1       3 961,0      3 961,0     3 961        3 961            0,0  pipe2
+      0,0            2 352          1       2 352,0      2 352,0     2 352        2 352            0,0  fopen64
+      0,0            1 698          1       1 698,0      1 698,0     1 698        1 698            0,0  bind
+
+[5/8] Executing 'cudaapisum' stats report
+
+CUDA API Statistics:
+
+ Time (%)  Total Time (ns)  Num Calls    Avg (ns)       Med (ns)      Min (ns)     Max (ns)    StdDev (ns)            Name
+ --------  ---------------  ---------  -------------  -------------  -----------  -----------  -----------  -------------------------
+     98,0      246 964 268          1  246 964 268,0  246 964 268,0  246 964 268  246 964 268          0,0  cudaEventSynchronize
+      0,0        1 424 054          2      712 027,0      712 027,0      160 946    1 263 108    779 346,0  cudaStreamSynchronize
+      0,0        1 343 279          3      447 759,0      426 867,0      425 147      491 265     37 686,0  cudaHostAlloc
+      0,0          809 297          3      269 765,0      238 705,0      236 225      334 367     55 960,0  cudaFreeHost
+      0,0          638 389        301        2 120,0        1 898,0        1 829       20 206      1 633,0  cudaLaunchKernel
+      0,0          177 614          3       59 204,0       53 937,0       51 863       71 814     10 969,0  cudaMalloc
+      0,0          176 922          3       58 974,0       62 917,0       47 628       66 377      9 977,0  cudaFree
+      0,0           18 409          3        6 136,0        5 683,0        2 291       10 435      4 090,0  cudaMemcpyAsync
+      0,0            8 200          1        8 200,0        8 200,0        8 200        8 200          0,0  cudaStreamCreateWithFlags
+      0,0            5 563          2        2 781,0        2 781,0          542        5 021      3 167,0  cudaEventCreate
+      0,0            3 967          2        1 983,0        1 983,0        1 469        2 498        727,0  cudaEventRecord
+      0,0            1 257          2          628,0          628,0          259          998        522,0  cudaEventDestroy
+      0,0              778          1          778,0          778,0          778          778          0,0  cuModuleGetLoadingMode
+
+[6/8] Executing 'gpukernsum' stats report
+
+CUDA Kernel Statistics:
+
+ Time (%)  Total Time (ns)  Instances  Avg (ns)    Med (ns)    Min (ns)  Max (ns)   StdDev (ns)                                 Name
+ --------  ---------------  ---------  ---------  -----------  --------  ---------  -----------  -------------------------------------------------------------------
+    100,0      248 481 450        301  825 519,0  1 059 133,0   559 487  1 378 717    251 071,0  void MatrixMulCUDA<(int)32>(double *, double *, double *, int, int)
+
+[7/8] Executing 'gpumemtimesum' stats report
+
+CUDA Memory Operation Statistics (by time):
+
+ Time (%)  Total Time (ns)  Count  Avg (ns)   Med (ns)   Min (ns)  Max (ns)  StdDev (ns)      Operation
+ --------  ---------------  -----  ---------  ---------  --------  --------  -----------  ------------------
+     56,0          200 927      2  100 463,0  100 463,0    64 352   136 575     51 069,0  [CUDA memcpy HtoD]
+     43,0          155 168      1  155 168,0  155 168,0   155 168   155 168          0,0  [CUDA memcpy DtoH]
+
+[8/8] Executing 'gpumemsizesum' stats report
+
+CUDA Memory Operation Statistics (by size):
+
+ Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)      Operation
+ ----------  -----  --------  --------  --------  --------  -----------  ------------------
+ 2,458           2  1,229     1,229     0,819     1,638     0,579        [CUDA memcpy HtoD]
+ 1,638           1  1,638     1,638     1,638     1,638     0,000        [CUDA memcpy DtoH]
