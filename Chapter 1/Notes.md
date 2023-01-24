@@ -87,7 +87,7 @@ __global__ some_kernel(int N)
 }
 ```
 
-##Grid stride loops
+## Grid stride loops
 
 <div align="center"><iframe src="https://view.officeapps.live.com/op/view.aspx?src=https://developer.download.nvidia.com/training/courses/C-AC-01-V1/embedded/task1/AC_CUDA_C_6.pptx" width="800px" height="500px" frameborder="0"></iframe></div>
 

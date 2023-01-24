@@ -1,6 +1,6 @@
 
 ```bash
-hipify-clang vectorAdd.cu -I ~/Downloads/cuda-samples-11.6/Common/
+/opt/rocm-5.4.0/bin/hipify-clang vectorAdd.cu -I ~/Downloads/cuda-samples-11.6/Common/
 ```
 
 ```bash
@@ -130,6 +130,15 @@ Move the `lib64` wherever you want and then
   matrixMultiplyPerf.cu.hip:318:23: error: no matching function for call to 'hipHostGetDevicePointer'
         checkCudaErrors(hipHostGetDevicePointer(&dptrA, hptrA, 0));
  ```
+ - Can't find an identifier for some reason:
+ ```
+ error: use of undeclared identifier 'findCudaDevice'
+  int dev = findCudaDevice(argc, (const char **)argv);
+ ```
+
+## Problems when running
+ - cudaProfilerStart and cudaProfilerStop are deprecated but exposed by torch.cuda.cudart(). HIP has corresponding functions stubbed out, hipProfilerStart and hipProfilerStop, but they return hipErrorNotSupported, which causes the program to stop. I think if they are stub functions anyways they should return success. `code=801(hipErrorNotSupported) "hipProfilerStart()"`: https://github.com/pytorch/pytorch/pull/82778
+ It is CUDA's problem too, as even their own samples are using a deprecated API, which is still implemented in CUDA but AMD didn't bother.
 
 ## HIPify is having a crazy high development pace, ass seen by number of commits
  - `/tmp/helper_cuda.h-978032.hip:63:3: warning: 'cuGetErrorName' is experimental in 'HIP'; to hipify it, use the '--experimental' option.`
@@ -145,7 +154,9 @@ Sources:
  - https://github.com/NVIDIA/cuda-samples/archive/refs/tags/v11.6.tar.gz
 
 Random:
-installing `cuda`
+ - sftp://jacek@10.0.2.2/
+
+ - installing `cuda`
 ```
 The following additional packages will be installed:
   binutils binutils-common binutils-x86-64-linux-gnu build-essential ca-certificates-java cuda-11-7 cuda-cccl-11-7 cuda-command-line-tools-11-7 cuda-compiler-11-7 cuda-cudart-11-7 cuda-cudart-dev-11-7 cuda-cuobjdump-11-7 cuda-cupti-11-7 cuda-cupti-dev-11-7
