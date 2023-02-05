@@ -123,6 +123,59 @@ Move the `lib64` wherever you want and then
  - It ignores preprocesor statements, so for example when a file contains `#ifdef`s it will throw errors about e.g. redefinition
  - Oddities, like `__DRIVER_TYPES_H__` never being defined by HIP, nor HIPify converts it to `HIP_INCLUDE_HIP_DRIVER_TYPES_H`. This down the line makes compilation not work
  - No easy way to convert makefiles.
+ - it has problems with types:
+ ```
+ /tmp/saxpy.cu-e011bd.hip:58:16: error: no matching function for call to 'max'
+    maxError = max(maxError, abs(y[i]-4.0f));
+               ^~~
+/usr/lib/llvm-14/lib/clang/14.0.6/include/__clang_cuda_math.h:196:16: note: candidate function not viable: call to __device__ function from __host__ function
+__DEVICE__ int max(int __a, int __b) { return __nv_max(__a, __b); }
+               ^
+/usr/include/crt/math_functions.hpp:983:38: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned int max(unsigned int a, unsigned int b)
+                                     ^
+/usr/include/crt/math_functions.hpp:988:38: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned int max(int a, unsigned int b)
+                                     ^
+/usr/include/crt/math_functions.hpp:993:38: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned int max(unsigned int a, int b)
+                                     ^
+/usr/include/crt/math_functions.hpp:998:34: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ long int max(long int a, long int b)
+                                 ^
+/usr/include/crt/math_functions.hpp:1014:43: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned long int max(unsigned long int a, unsigned long int b)
+                                          ^
+/usr/include/crt/math_functions.hpp:1029:43: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned long int max(long int a, unsigned long int b)
+                                          ^
+/usr/include/crt/math_functions.hpp:1044:43: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned long int max(unsigned long int a, long int b)
+                                          ^
+/usr/include/crt/math_functions.hpp:1059:39: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ long long int max(long long int a, long long int b)
+                                      ^
+/usr/include/crt/math_functions.hpp:1064:48: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned long long int max(unsigned long long int a, unsigned long long int b)
+                                               ^
+/usr/include/crt/math_functions.hpp:1069:48: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned long long int max(long long int a, unsigned long long int b)
+                                               ^
+/usr/include/crt/math_functions.hpp:1074:48: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ unsigned long long int max(unsigned long long int a, long long int b)
+                                               ^
+/usr/include/crt/math_functions.hpp:1079:31: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ float max(float a, float b)
+                              ^
+/usr/include/crt/math_functions.hpp:1084:32: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ double max(double a, double b)
+                               ^
+/usr/include/crt/math_functions.hpp:1089:32: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ double max(float a, double b)
+                               ^
+/usr/include/crt/math_functions.hpp:1094:32: note: candidate function not viable: call to __device__ function from __host__ function
+__MATH_FUNCTIONS_DECL__ double max(double a, float b)
+ ```
 
 ## Problems when compiling
  - Even odder things

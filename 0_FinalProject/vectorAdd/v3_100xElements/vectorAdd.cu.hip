@@ -62,7 +62,7 @@ int main(void) {
   hipError_t err = hipSuccess;
 
   // Print the vector length to be used, and compute its size
-  int numElements = 50000;
+  int numElements = 5000000;
   size_t size = numElements * sizeof(float);
   printf("[Vector addition of %d elements]\n", numElements);
 
