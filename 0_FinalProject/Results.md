@@ -32,7 +32,9 @@ Checking computed result for correctness: Result = PASS
 
 vectorAddv2:
 Vega7
-
+```
+Time= 0.263 msec
+```
 
 RX580
 ```
@@ -58,7 +60,9 @@ Done
 
 vectorAddv3:
 Vega7
-
+```
+Time= 1.402 msec
+```
 
 RX580
 ```
@@ -84,7 +88,9 @@ Done
 
 saxpy:
 Vega7
-
+```
+Effective Bandwidth (GB/s): 51.354900
+```
 
 RX580
 ```

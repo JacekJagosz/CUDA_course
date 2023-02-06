@@ -22,7 +22,7 @@ This approach supports all the CUDA versions LLVM does, so it is only a few mont
 But I found out this approach brings a lot of its own incompatibilities with it.
 It is a standalone package that doesn't require the rest of ROCm stack, but it does require a new LLVM (the newer the higher CUDA support), as well as a full CUDA SDK installation.
 
-That fact immediately breaks the idea of fully open source running of CUDA code. Also because of its license many Linux distributions can't package CUDA and include it in its repositories, including mine. I tried in many ways manually extracting the CUDA installer, to get the libraries and headers. But it turns out that HIPify still uses LLVM's full CUDA detection, which means LLVM checks all components of CUDA and if they were properly installed, including e.g. device libraries.[^4]
+That fact immediately breaks the idea of fully open source running of CUDA code. Also because of its license many Linux distributions can't package CUDA and include it in its repositories, including one I used. I tried in many ways manually extracting the CUDA installer, to get the libraries and headers. But it turns out that HIPify still uses LLVM's full CUDA detection, which means LLVM checks all components of CUDA and if they were properly installed, including e.g. device libraries.[^4]
 
 After a lot of trying I had to use a different OS for just translation to HIP, I used Ubuntu 20.04 with CUDA SDK straight from Nvidia, and then I could use that translated code on my OS with fully build from source software stack.
 
@@ -37,10 +37,10 @@ HIP is very similar to CUDA. After I converted vectorAdd.cu all that got changed
 
 So for example `#include <cuda_runtime.h>`{.c} to `#include <hip/hip_runtime.h>`{.c}, `err = cudaMalloc((void **)&d_A, size);`{.c} to `err = hipMalloc((void **)&d_A, size);`{.c}, etc. The whole rest was the same.
 
-All the libraries need to be converted too, you can use HIPify for that too, and for the big CUDA libraries AMD has created their own versions, optimised for their GPUs, to the programmer the functions are very similar but unfortunately not the same.
+All the libraries need to be converted too, you can use HIPify for that, and for the big CUDA libraries AMD has created their own versions, optimised for their GPUs, to the programmer the functions are very similar but unfortunately not the same.
 
 ## Incompatibilities when converting using HIPify
-Only now we can deal with actual conversion and its shortcomings. I have decided to use Nvidia's CUDA Samples[^5] because they offer a wide range of features to be tested, as well as I expected they would be better supported because they are the official reference code. And yet I still encountered many problems with them
+Time to look at conversion process and its shortcomings. I used latest version of HIPify compiled from source. I have decided to use Nvidia's CUDA Samples[^5] because they offer a wide range of features to be tested, as well as I expected they would be better supported because they are the official reference code. And yet I still encountered many problems with them.
 
  - You can't specify which c++ version it is using for converting, like you can when compiling CUDA, but you can when compiling.
  This meant I had to replace c++ 11's sprintf_s with something supported in previous version, even when HIPify should be using C++ 11 by default
@@ -50,7 +50,7 @@ Only now we can deal with actual conversion and its shortcomings. I have decided
   sprintf_s(cTemp, 10, "%d.%d", driverVersion / 1000,
   ```
 
- - some device properties from CUDA are not implemented in HIP's hipDeviceProp_t
+ - Some device properties from CUDA are not implemented in HIP's hipDeviceProp_t
 
 ```c
   deviceQuery.cpp.hip:180:20: error: no member named 'maxTexture1DLayered' in 'hipDeviceProp_t'; did you mean 'maxTexture1DLinear'?
@@ -132,18 +132,36 @@ Only now we can deal with actual conversion and its shortcomings. I have decided
     maxError = max(maxError, abs(y[i]-4.0f));
                ^~~
  ```
+ 
  even in such simple piece of code:
+ 
  ```c
  float maxError = 0.0f;
  for (int i = 0; i < N; i++) {
    maxError = max(maxError, abs(y[i]-4.0f));
  }
  ```
+
  - Converting helper_cuda.h was the hardest as HIPify can't handle `cuBLAS`, `cuRAND`, `cuFFT`, `cuPARSE`, even though those APIs should be supported[^6]
  - It ignores preprocesor statements, so for example when a file contains `#ifdef`s it will throw errors about e.g. redefinition
+ 
+ ```c
+ #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
+    // Windows path delimiter
+    size_t delimiter_pos = executable_name.find_last_of('\\');
+
+#else
+    // Linux & OSX path delimiter
+    size_t delimiter_pos = executable_name.find_last_of('/');
+#endif
+ ```
+ 
+ In the code above it will complain `delimiter_pos` was redefined, because it doesn't understand only `if` OR `else` can be entered.
+ 
  - Oddities, like `__DRIVER_TYPES_H__` never being defined by HIP, nor HIPify will it to `HIP_INCLUDE_HIP_DRIVER_TYPES_H`. This down the line makes compilation not work
  - There is no easy way to convert makefiles, all have to be done manually
 
+\newpage
 ## The ROCm stack
 
 ![](https://www.amd.com/system/files/styles/992px/private/2021-11/1045756-ROCm-5-chart-1260x709.png?itok=hMr0O8ky)
@@ -153,6 +171,8 @@ The whole of the stack is Open Source, from kernel driver up, most released unde
 You can of course download packages for supported OSes from AMD, but the whole differentiating factor from CUDA is it being open, so let's review how easy it is to compile it from source and package it for a distribution.
 
 ## Compiling HIP
+
+After the CUDA code has been compiled to HIP, you can use `hipcc` to compile them. The format is the same as when using NVCC or clang
 
 The following command won't work, as even the libraries have to be converted to HIP
 ```bash
@@ -167,7 +187,6 @@ And here is how you compile binary from multiple source files
 hipcc commonKernels.cu.hip helperFunctions.cpp.hip matrixMultiplyPerf.cu.hip --rocm-device-lib-path=/usr/lib64/amdgcn/bitcode/ -DROCM_PATH=/usr -I ../CommonConvertedToHIP_5.4.2/
 ```
 
-As you can see the format is the same as when using NVCC or clang
 
 ### Problems when compiling HIP
 
@@ -186,34 +205,37 @@ As you can see the format is the same as when using NVCC or clang
 ## Problems when running
 
 Fortunately there weren't many, if you managed to convert and compile successfully, it did work.
+
 cudaProfilerStart and cudaProfilerStop are deprecated but exposed by torch.cuda.cudart(). HIP has corresponding functions stubbed out, hipProfilerStart and hipProfilerStop, but they return hipErrorNotSupported, which causes the program to stop. I think if they are stub functions anyways they should return success. `code=801(hipErrorNotSupported) "hipProfilerStart()"`: [Here is the related post discussing it.](https://github.com/pytorch/pytorch/pull/82778)
 
 It is CUDA's problem too, as even their own samples are using a deprecated API, which is still implemented in CUDA but AMD didn't bother.
 
 When I increased saxpy's element number 100 times after a few seconds the GPU hang and I got artifacts all over the screen. I must have filled the GPU memory, but it is bad the GPU driver couldn't recover and the PC required a hard reset.
 
-Vega's capability version is too high for its own good, and AMD's own functions don't know what to return `MapSMtoCores for SM 9.0 is undefined.  Default to use 128 Cores/SM`. This in turn returns the wrong value, as 128 is correct for RDNA, but for GCN it should be 64.
+Vega's capability version is too high for its own good, and AMD's own functions don't know what to return `MapSMtoCores for SM 9.0 is undefined.  Default to use 128 Cores/SM`. This in turn returns the wrong value, as for GCN (and almost any AMD GPU) it should be 64.
  
 ## Performance
 ### Test systems
-I had access to 3 systems to compare. First was lab computer running Ubuntu 22.04, with Nvidia Quadro 4000, which features 36 SMs, 2304 CUDA cores, boost clock 1545 MHz and its theoretical FP32 performance is 7.119 TFLOPS.[^10] In performance it is comparable to RTX 2060 Super.
+I had access to 3 systems to compare. First was lab computer running Ubuntu 22.04, with Nvidia Quadro 4000, which features 36 SMs, 2304 CUDA cores, boost clock 1545 MHz and its theoretical FP32 performance is 7.119 TFLOPS, and memory subsystem with 416.0 GB/s of bandwidth.[^10] In performance it is comparable to RTX 2060 Super.
 
 2 of my AMD systems were running Solus 4.3 with ROCm 5.1.3 packaged by me, now available from the main repository.
 
-First one was Radeon RX 580, a very affordable and popular GPU, with 36CUs, 2304 shading units, boost clock 1340 MHz and theoretical FP32 performance of 6.175 TFLOPS.[^11]
+First one was Radeon RX 580, a very affordable and popular GPU, with 36CUs, 2304 shading units, boost clock 1340 MHz and theoretical FP32 performance of 6.175 TFLOPS, and 256.0 GB/s memory.[^11]
 
 Even though the 2 cards are completely different architectures, with Radeon being much cheaper and slower in most workloads, they have exactly the same number of "cores", and the difference in TFLOPS is only because different boost clocks. So it is a great comparison how theoretically equivalent devices can handle different workloads completely differently.
 
-The 3rd system is equipped with Ryzen PRO 4650G, an APU. Its integrated GPU is Vega 7, with 7 CUs, 448 SUs[^12], that I manually overclocked as far as it could handle, to 2180MHz, which raises its FP32 performance to 448 * 2,180 * 2 = 1.95 TFLOPS. I also overclocked the RAM to 3866MHz to try to reduce the memory speed as the bottleneck as much as possible. This iGPU is very interesting for 3 reasons.
+The 3rd system is equipped with Ryzen PRO 4650G, an APU. Its integrated GPU is Vega 7, with 7 CUs, 448 SUs[^12], that I manually overclocked as far as it could handle, to 2180MHz, which raises its FP32 performance to 448 * 2,180 * 2 = 1.95 TFLOPS. I also overclocked the RAM to 3866MHz (61.8 GB/s) to try to reduce the memory speed as the bottleneck as much as possible. This iGPU is very interesting for 3 reasons.
 
-For one because it is an integrated GPU, which means it is a very unique form factor that can be really useful for some use cases. In a very small size and power envelope you can get very powerful CPU and in theory GPU. Nvidia only offers their Jetson series, but the software is much more locked down, the CPU performance much worse, and the price much higher.
+For one because it is an integrated GPU, which means it is a very unique form factor that can be really useful for some use cases. In a very small size and power envelope you can get very powerful CPU and in theory GPU. Nvidia's only only competition is their Jetson series, but the software is much more locked down, the CPU performance much worse, and the price much higher.
 
-Second is because it uses Vega architecture, the last before AMD split their GPUs into gaming focused RDNA and compute focused CDNA. While RDNA changed a lot in its architecture to optimise for gaming performance, sacrificing compute, CDNA is direct successor to already very great at compute Vega. So it is a good look at performance of GPUs only available for servers and supercomputers, as well as it should be the best supported GPU family by ROCm.
+Second is because it uses Vega architecture, the last before AMD split their GPUs into gaming focused RDNA and compute focused CDNA. While RDNA changed a lot in its architecture to optimise for gaming performance, sacrificing compute, CDNA is direct successor to already very great at compute Vega. So it is a good look at performance of GPUs only available for servers and supercomputers, as well as it should be the best supported consumer GPU family by ROCm.
 
 And lastly APUs over 10 years ago started being pushed by AMD for their combined compute capabilities with HSA (Heterogeneous System Architecture). And while that didn't get much traction, now the compute stack seems to be more ready then ever.
 
 ### Tests
 First test I performed was with `matrixMul` from CUDA samples, with default settings, which I previously checked were the already the best for the Nvidia GPU.
+
+As this test partly uses the shared memory, the GPU performance shouldn't be as bottlenecked by memory performance, as that data should be residing in cache.
 
 Quadro 4000:
 ```
@@ -239,7 +261,7 @@ Here the RX 580 really surprised, it was 74% percent faster than much more expen
 APU was also really impressive 36.4% performance of the RTX 4000, with only 27.4% of the theoretical TFLOPs, and about 10x smaller power consumption.
 
 
-Next I tried running saxpy, an exercise program from one of our classes.
+Next I tried running saxpy, an simple exercise program from one of our classes, with no manual optimisations.
 
 Quadro 4000
 ```
@@ -251,13 +273,17 @@ Effective Bandwidth (GB/s): 174.323280
 ```
 Vega 7
 ```
-TODO
+Effective Bandwidth (GB/s): 51.354900
 ```
-Here the Polaris GPU's performance was much less impressive, achieving only 45.8% performance of the Nvidia's GPU, but it is still not bad compared to the price of the GPU
-TODO Vega
+Here the Polaris GPU's performance was much less impressive, achieving only 45.8% performance of the Nvidia's GPU, but it is still not bad compared to the price of the GPU. Maybe that is because Radeon's memory has 61.5% throughput of the Quadro, but I don't think that is the case.
+
+APU's bandwidth was only 13.5% performance of the Quadro, while compared to the 580 its performance scaled almost linearly with TFLOPS - 29.5% of Polaris' performance with 31.5% of TFLOPS. Or if you look at the memory it has 14.9% bandwidth of the Quadro, so the scaling would also make sense here.
+
+So in this workload either AMD GPUs perform 2 times worse than Nvidia for the same TFLOPS, or the performance scales closely with the memory bandwidth.
 
 
 The last program I benchmark was vectorAdd from CUDA samples, where I manually added execution time counting.
+
 Quadro 4000
 ```
 [Vector addition of 50000 elements]
@@ -275,9 +301,9 @@ Time= 0.354 msec
 
 Vega 7
 ```
-TODO
+Time= 0.263 msec
 ```
-Here the Radeon GPU did really bad, and I am not sure why, it was 59 times slower than the Nvidia GPU. My guess is that this is all because the kernel execution time is so low, most of it are not the calculations but the time to launch it itself. And maybe that time is much higher with HIP?
+Here the Radeon GPUs did really bad, and I am not sure why, RX 580 was 59 times slower than the Nvidia GPU. My guess is that this is all because the kernel execution time is so low, most of it are not the calculations but the time to launch it itself. And maybe that time is much higher with HIP?
 
 To test that theory I increased the element size 100 times and rerun the tests:
 Quadro 4000
@@ -296,13 +322,15 @@ Time= 2.559 msec
 ```
 Vega 7
 ```
-TODO
+Time= 1.402 msec
 ```
-Radeon GPU was still 15.7 times slower, so I even though the kernel launch time could be a factor, it clearly isn't the only factory why AMD GPU is slower. Maybe Nvidia GPU has additional optimisation, but that is unlikely as both compilers are based on LLVM. Or maybe this is an AMD bug?
+Polaris was still 15.7 times slower, so I even though the kernel launch time could be a factor, it clearly isn't the only factory why AMD GPU is slower. Maybe Nvidia GPU has additional optimisation, but that is unlikely as both compilers are based on LLVM. Or maybe this is an AMD bug?
+
+I don't think it is a big problem though, as we saw previously longer workloads do perform in line with expectations.
 
 ### How AMD GPUs are seen by CUDA
 As AMD architectures are so different from Nvidia's I reall wanted to see how they are seen by CUDA programs. So I converted `deviceQuery` from CUDA Samples to HIP and ran it.
-As mentioned earlier, `hipDeviceProp_t` doesn't contain some parameters CUDA expects, which does necessitate changes to the code. Still most parameters work.
+As mentioned earlier, `hipDeviceProp_t` doesn't contain some parameters CUDA expects, which does necessitate changes to the code. Still, most parameters do work.
 Quadro 4000
 ```
 Detected 1 CUDA Capable device(s)
@@ -426,13 +454,13 @@ deviceQuery, CUDA Driver = CUDART, CUDA Driver Version = 50120.3, CUDA Runtime V
 Result = PASS
 ```
 
-Interesting that even though both AMD architectures are older than Turing, they report higher CUDA capability than Nvidia's architectures.
+Interesting that even though both AMD architectures are older than Turing, they report higher CUDA capability than it does.
 
 On AMD GPUs the warp size is 64 instead of 32 common for all Nvidia GPUs. Some programs might not expect that being anything other than 32. All GCN GPUs execute instructions in wave64, while RDNA moved to wave32.[^13]
 
-I was also wondering why Polaris reports to have more shared memory per block, even though it has half the L2 and 4 times less L1, I wonder if any of that memory is by default put in cache, or all of it in RAM and you have no control of what goes into cache. I have managed to link this value to [HSA_AMD_MEMORY_POOL_INFO_SIZE](https://github.com/ROCm-Developer-Tools/ROCclr/blob/6aa1f12df4290c1c3d590a9e56ec44c42296964d/device/rocm/rocdevice.cpp#L1245), and then to the [function it gets this value from](https://github.com/RadeonOpenCompute/ROCR-Runtime/blob/fc99cf8516ef4bfc6311471b717838604a673b73/src/core/common/hsa_table_interface.cpp#L937). I finally managed to trace those values, turns out all GCN have 64KB of local and shared memory, and that is more than it has cache.[!14]
+I was also wondering why Polaris reports to have more shared memory per block, even though it has half the L2 and 4 times less L1. If any of that memory is by default put in cache, or all of it in RAM and you have no control of what goes into cache. I have managed to link this value to [HSA_AMD_MEMORY_POOL_INFO_SIZE](https://github.com/ROCm-Developer-Tools/ROCclr/blob/6aa1f12df4290c1c3d590a9e56ec44c42296964d/device/rocm/rocdevice.cpp#L1245), and then to the [function it gets this value from](https://github.com/RadeonOpenCompute/ROCR-Runtime/blob/fc99cf8516ef4bfc6311471b717838604a673b73/src/core/common/hsa_table_interface.cpp#L937). I finally managed to trace those values, turns out all GCN have 64KB of local and shared memory, and that is more than it has cache.[^14]
 
-![Shared Memory Hierarchy](https://rocmdocs.amd.com/en/latest/_images/fig_2_1_vega.png)
+![Shared Memory Hierarchy](https://rocmdocs.amd.com/en/latest/_images/fig_2_1_vega.png){ width=100% }
 
 Also interesting that it didn't return L2 cache size for Polaris but did for Vega.
 
@@ -442,7 +470,7 @@ Because of the Open Source nature I was able to dig through layers of ROCm stack
 
 ## Building and packaging ROCm from source
 
-The fact ROCm is fully open source is a big advantage of AMD's solution. But the fact the source is viewable is one thing, but how useful that fact is another.
+The fact ROCm is fully open source is a big advantage of AMD's solution. But the fact the source is viewable is one thing, but how useful that fact is another thing.
 
 While on Windows you get programs straight from the creator, on Linux almost every piece you use has been packaged from source by distribution maintainers. This approach greatly improves flexibility and compatibility, also allows for customizing or fixing specific bugs by distributions themselves. But this approach needs some work by the developer to make a flexible build process for an app. 
 
@@ -459,24 +487,32 @@ Here are most notable of the issues I found:
  - to use newest version of ROCm you have to package AMD's fork of LLVM, which is additional work. And even then when my friend tried that, some packages would get confused which LLVM to use and refuse to build
  - all the above require a ton of patches, for every single package, which need to be rebased and updated with each ROCm or LLVM upgrade, which makes the whole process even more difficult
 
-The package sources can be find on [my Github](https://github.com/JacekJagosz/rocm-Solus) or [Solus' bugtracker](https://dev.getsol.us/).
+So far the only mostly complete Open Source ROCm [can be found in Debian repos](https://salsa.debian.org/rocm-team), while for example AMD developer has packaged a part of the stack for Fedora, so at least the OpenCL support is working (but no HIP). And Arch has [build scripts for complete stack](https://github.com/rocm-arch/rocm-arch), but those have to be compiled yourself, they are not in the repositories.
+
+Those community are projects are the best chance of improving the build process, as when they have to patch things, they try to get that change included upstream as well. They also serve as a great reference for other distributions.
+
+The package sources can be find on [my Github](https://github.com/JacekJagosz/rocm-Solus) or [Solus' dev tracker](https://dev.getsol.us/).
 
 ## Other notes about ROCm
 
 Whole ROCm has a very high development pace, as can be seen by number of commits to repositories as well as number of releases
+
 For example library compatibilities is getting better
  - `/tmp/helper_cuda.h-978032.hip:63:3: warning: 'cuGetErrorName' is experimental in 'HIP'; to hipify it, use the '--experimental' option.`
+
 Or not too long ago launching kernels became the same as in CUDA, while before the syntax was completely different.
 
 ### Hardware compatibility is far behind CUDA
 
 Nvidia has been really decent with supporting older architectures. As of writing, the latest CUDA 12 has support from Maxwell to Hopper, the oldest supported GPU is GTX 750 family which is 9 years old.[^8] And all consumer GPUs in between are supported.
+
 Another benefit is that similarly as with CPUs, you can compile for specific compute capability, and all GPUs with same or higher compute capability will work with the same binary. This really helps with build times as well as resulting application size.
 
 In comparison, AMD has a lot of work to do. The latest release of ROCm 5.4 officially supports... only professional grade GPUs, and only from 3 architectures, Vega, RDNA 2 and CDNA. The oldest officially supported GPU, MI50, is a bit more than 4 years old.[^9] So even the RX 480 I was testing on is not supported and I had to patch in the support for it.
-Of course it does support consumer GPUs, but the experience is surprisingly spotty. Support for new architectures and OS releases is often delayed. For example good support for RDNA 1 came only around release of RDNA 2.
 
-Moreover when a specific architecture over all should be working, this doesn't mean all GPUs do. Often laptop chips didn't work, same with some APUs. But most egregious was the case of Navi 22, featured in for example 6700 XT. Both higher and lower end models got support since release, but this one didn't. So you either had to build the whole stack from source with this support patched in, or you had to force the Navi 21 kernel.[^7] Compiler supported it from the start, all it needed was adding of IDs in a few places in the code, and yet AMD didn't bother.
+Of course it does work with consumer GPUs, but the experience is surprisingly spotty. Support for new architectures and OS releases is often delayed. For example good support for RDNA 1 came only around release of RDNA 2.
+
+Moreover when a specific architecture over all should be working, this doesn't mean all GPUs belonging to that family do. Often laptop chips didn't work, same with some APUs. But most egregious was the case of Navi 22, featured in for example 6700 XT. Both higher and lower end models got support since release, but this one didn't. So you either had to build the whole stack from source with this support patched in, or you had to force it to use Navi 21 kernels.[^7] Compiler supported it from the start, all it needed was adding of IDs in a few places in the code, and yet AMD didn't bother.
 
 Which brings us to yet another pitfall, there is no intermediate representation, each kernel only supports one GFX ID. And that doesn't mean support for one architecture, but one physical GPU die, so just one GPU family can need 3-4 different kernels (like RDNA 2 had Navi 21, 22 and 23).
 
@@ -486,20 +522,22 @@ This means that if you want to build for all supported architectures the build t
 AMD touts its software stack as great for servers, HPC and AI. What it certainly isn't optimised yet for is for smaller scale or personal use. 
 The GPU and OS compatibility is not great, the HIPify has its problems, and packaging from source is really hard or in some cases impossible.
 
-Also no matter how good the CUDA to HIP conversion process is, it is still not a replacement for running CUDA. Almost all the documentation out there is for CUDA, not HIP. Even if it is really similar, it is much easier to write CUDA. So you can either keep writing in CUDA, then convert it to HIP, and then fix some problems, and repeat that with every single update of your CUDA code. Or one can continue working on the HIP code, which works on both GPU vendors, but is less supported and has very little documentation.
+Also no matter how good the CUDA to HIP conversion process is, it is still not a replacement for running CUDA. Almost all the documentation out there is for CUDA, not HIP. Even if it is really similar, it is much easier to write CUDA. So you can either keep writing in CUDA, then convert it to HIP, and then fix some problems, and repeat that with every single update of your CUDA code. Or one can continue working on the HIP code, which works on both GPU vendors, but is less supported and has very little 3rd party documentation.
 
-AMD is also in a weird place with GPUs. In 2011 they have introduced GCN that was "Geared for compute"[^15], for years their GPUs had great compute capabilities, but almost no software could use them, and the gaming performance was lacking. So finally they decided to split the development into gaming-focused RDNA, and continue GCN legaci with CDNA. So now all consumer GPUs are not as great for compute, and they are not well supported either as all datacenters use GPUs with different architecture. And you can't buy any CDNA GPUs from retail. So if you want a true compute GPU you need to go back to Vega.
+AMD is also in a weird place with GPUs. In 2011 they have introduced GCN that was "Geared for compute"[^15], for years their GPUs had great compute capabilities, but almost no software could use them, while the gaming performance was lacking. So finally they decided to split the development into gaming-focused RDNA, and continue GCN legacy with CDNA. So now all consumer GPUs are not as great for compute, and they are not well supported either as all datacenters use GPUs with different architecture. And you can't buy any CDNA GPUs from retail. So if you want a true compute GPU you need to go back to Vega.
 
 But once you have the HIP code, installed stack and supported GPU, the performance can be great, minus some weird edge cases. AMD offers form factors not available anywhere else, like mobile, desktop or even server APUs. Also the whole stack is open source which is great for security, maintainability and future hardware support, and in that regard, AMD has no competition.
 
 ### Ideas for improvements:
- - HIPify only changes function names, HIP is reimplementing CUDA functions anyways. It shouldn't need installation of CUDA SDK, it necessitates proprietary software, limits OS compatibility and makes the whole process more complicated for no good reason. Al least only the headers should be necessary, not relying on LLVM and its CUDA detection
+ - HIPify only changes function names, HIP is reimplementing CUDA functions anyways. It shouldn't need installation of CUDA SDK, it necessitates proprietary software, limits OS compatibility and makes the whole process more complicated for no good reason. At least only the headers should be necessary, not relying on LLVM and its CUDA detection
  - ROCm needs to be steadily improved to help with packaging on all distros, not just by Debian and Arch maintainers, but AMD devs need to help too (more directly)
- - Official hardware compatibility is a lot worse than with CUDA, for both brand new and aging hardware. Meanwhile versions by community already do fix some incompatibilities, bugs and even keep support for dropped architectures. But then we come back to the problem of how hard the stack is to package. Also there is only so long community can keep older architectures working, as some points things break, and noone will ever fix them
+ - Official hardware compatibility is a lot worse than with CUDA, for both brand new and aging hardware. Meanwhile versions by community already do fix some incompatibilities, bugs and even keep support for dropped architectures. But then we come back to the problem of how hard the stack is to package. Also there is only so long community can keep older architectures working, as at some point things break, and no one will ever fix them
  - AMD needs to release CDNA for consumers, or support RDNA better for compute
  - With how few architectures a specific release supports both distributions and software would have to support multiple ones. While the final nail in the coffin is necessity for separate kernels for every possible GPU die.
 
 Sources:
+
+The repository with the test samples can be found [here](https://github.com/JacekJagosz/HIPifyViabilityReport).
 
 [^1]: https://developer.nvidia.com/cuda-llvm-compiler
 
