@@ -191,6 +191,8 @@ cudaProfilerStart and cudaProfilerStop are deprecated but exposed by torch.cuda.
 It is CUDA's problem too, as even their own samples are using a deprecated API, which is still implemented in CUDA but AMD didn't bother.
 
 When I increased saxpy's element number 100 times after a few seconds the GPU hang and I got artifacts all over the screen. I must have filled the GPU memory, but it is bad the GPU driver couldn't recover and the PC required a hard reset.
+
+Vega's capability version is too high for its own good, and AMD's own functions don't know what to return `MapSMtoCores for SM 9.0 is undefined.  Default to use 128 Cores/SM`. This in turn returns the wrong value, as 128 is correct for RDNA, but for GCN it should be 64.
  
 ## Performance
 ### Test systems
@@ -393,43 +395,7 @@ Device 0: ""
   Total amount of global memory:                 4096 MBytes (4294967296 bytes)
 MapSMtoCores for SM 9.0 is undefined.  Default to use 128 Cores/SM
 MapSMtoCores for SM 9.0 is undefined.  Default to use 128 Cores/SM
-  (007) Multiprocessors, (128) CUDA Cores/MP:    896 CUDADetected 1 CUDA Capable device(s)
-
-Device 0: ""
-  CUDA Driver Version / Runtime Version          50120.3 / 50120.3
-  CUDA Capability Major/Minor version number:    9.0
-  Total amount of global memory:                 4096 MBytes (4294967296 bytes)
-MapSMtoCores for SM 9.0 is undefined.  Default to use 128 Cores/SM
-MapSMtoCores for SM 9.0 is undefined.  Default to use 128 Cores/SM
   (007) Multiprocessors, (128) CUDA Cores/MP:    896 CUDA Cores
-  GPU Max Clock rate:                            1900 MHz (1.90 GHz)
-  Memory Clock rate:                             1933 Mhz
-  Memory Bus Width:                              128-bit
-  L2 Cache Size:                                 1048576 bytes
-  Maximum Texture Dimension Size (x,y,z)         1D=(16384), 2D=(16384, 16384), 3D=(16384, 16384, 8192)
-  Total amount of constant memory:               4294967296 bytes
-  Total amount of shared memory per block:       65536 bytes
-  Total number of registers available per block: 65536
-  Warp size:                                     64
-  Maximum number of threads per multiprocessor:  2560
-  Maximum number of threads per block:           1024
-  Max dimension size of a thread block (x,y,z): (1024, 1024, 1024)
-  Max dimension size of a grid size    (x,y,z): (2147483647, 2147483647, 2147483647)
-  Maximum memory pitch:                          4294967296 bytes
-  Texture alignment:                             256 bytes
-  Run time limit on kernels:                     No
-  Integrated GPU sharing Host Memory:            No
-  Support host page-locked memory mapping:       Yes
-  Device has ECC support:                        Disabled
-  Device supports Managed Memory:                No
-  Supports Cooperative Kernel Launch:            Yes
-  Supports MultiDevice Co-op Kernel Launch:      Yes
-  Device PCI Domain ID / Bus ID / location ID:   0 / 4 / 0
-  Compute Mode:
-     < Default (multiple host threads can use ::cudaSetDevice() with device simultaneously) >
-
-deviceQuery, CUDA Driver = CUDART, CUDA Driver Version = 50120.3, CUDA Runtime Version = 50120.3, NumDevs = 1
-Result = PASS Cores
   GPU Max Clock rate:                            1900 MHz (1.90 GHz)
   Memory Clock rate:                             1933 Mhz
   Memory Bus Width:                              128-bit
@@ -462,13 +428,17 @@ Result = PASS
 
 Interesting that even though both AMD architectures are older than Turing, they report higher CUDA capability than Nvidia's architectures.
 
-On AMD GPUs the warp size is 64 instead of 32 common for all Nvidia GPUs. Some programs might not expect that being anything other than 32. 64 makes sense for AMD, as that means whole CU is one warp. But as for more than 10 years AMD has used 16-wide vector SIMD, I wonder why they can't make the warp smaller.
+On AMD GPUs the warp size is 64 instead of 32 common for all Nvidia GPUs. Some programs might not expect that being anything other than 32. All GCN GPUs execute instructions in wave64, while RDNA moved to wave32.[^13]
 
-What is peculiar is that Vega reports 2 times more CUDA cores than its number of SUs. I wonder if that means in some cases it can do twice the threads per clock, maybe AMD has noticed that their GPUs do better with more threads per block than Nvidia, or maybe it is a bug?
+I was also wondering why Polaris reports to have more shared memory per block, even though it has half the L2 and 4 times less L1, I wonder if any of that memory is by default put in cache, or all of it in RAM and you have no control of what goes into cache. I have managed to link this value to [HSA_AMD_MEMORY_POOL_INFO_SIZE](https://github.com/ROCm-Developer-Tools/ROCclr/blob/6aa1f12df4290c1c3d590a9e56ec44c42296964d/device/rocm/rocdevice.cpp#L1245), and then to the [function it gets this value from](https://github.com/RadeonOpenCompute/ROCR-Runtime/blob/fc99cf8516ef4bfc6311471b717838604a673b73/src/core/common/hsa_table_interface.cpp#L937). I finally managed to trace those values, turns out all GCN have 64KB of local and shared memory, and that is more than it has cache.[!14]
 
-I also wonder why Polaris reports to have more shared memory per block, even though it has half the L2 and 4 times less L1, I wonder if any of that memory is by default put in cache, or all of it in RAM and you have no control of what goes into cache.
+![Shared Memory Hierarchy](https://rocmdocs.amd.com/en/latest/_images/fig_2_1_vega.png)
+
+Also interesting that it didn't return L2 cache size for Polaris but did for Vega.
 
 On the APU, the total amount of global memory is 4GB, the same as I assigned for the iGPU in the BIOS, and L2 Cache size is 1GB, which would be impossible on a dedicated GPU, but as here all memory is just RAM the number can be any chosen by the manufacturer.
+
+Because of the Open Source nature I was able to dig through layers of ROCm stack and find how those values are calculated, [like this one](https://github.com/ROCm-Developer-Tools/ROCclr/blob/6aa1f12df4290c1c3d590a9e56ec44c42296964d/device/rocm/rocdevice.cpp#L1127).
 
 ## Building and packaging ROCm from source
 
@@ -493,8 +463,10 @@ The package sources can be find on [my Github](https://github.com/JacekJagosz/ro
 
 ## Other notes about ROCm
 
-HIPify is having a crazy high development pace, as seen by number of commits, 
+Whole ROCm has a very high development pace, as can be seen by number of commits to repositories as well as number of releases
+For example library compatibilities is getting better
  - `/tmp/helper_cuda.h-978032.hip:63:3: warning: 'cuGetErrorName' is experimental in 'HIP'; to hipify it, use the '--experimental' option.`
+Or not too long ago launching kernels became the same as in CUDA, while before the syntax was completely different.
 
 ### Hardware compatibility is far behind CUDA
 
@@ -516,13 +488,16 @@ The GPU and OS compatibility is not great, the HIPify has its problems, and pack
 
 Also no matter how good the CUDA to HIP conversion process is, it is still not a replacement for running CUDA. Almost all the documentation out there is for CUDA, not HIP. Even if it is really similar, it is much easier to write CUDA. So you can either keep writing in CUDA, then convert it to HIP, and then fix some problems, and repeat that with every single update of your CUDA code. Or one can continue working on the HIP code, which works on both GPU vendors, but is less supported and has very little documentation.
 
+AMD is also in a weird place with GPUs. In 2011 they have introduced GCN that was "Geared for compute"[^15], for years their GPUs had great compute capabilities, but almost no software could use them, and the gaming performance was lacking. So finally they decided to split the development into gaming-focused RDNA, and continue GCN legaci with CDNA. So now all consumer GPUs are not as great for compute, and they are not well supported either as all datacenters use GPUs with different architecture. And you can't buy any CDNA GPUs from retail. So if you want a true compute GPU you need to go back to Vega.
+
 But once you have the HIP code, installed stack and supported GPU, the performance can be great, minus some weird edge cases. AMD offers form factors not available anywhere else, like mobile, desktop or even server APUs. Also the whole stack is open source which is great for security, maintainability and future hardware support, and in that regard, AMD has no competition.
 
 ### Ideas for improvements:
  - HIPify only changes function names, HIP is reimplementing CUDA functions anyways. It shouldn't need installation of CUDA SDK, it necessitates proprietary software, limits OS compatibility and makes the whole process more complicated for no good reason. Al least only the headers should be necessary, not relying on LLVM and its CUDA detection
  - ROCm needs to be steadily improved to help with packaging on all distros, not just by Debian and Arch maintainers, but AMD devs need to help too (more directly)
  - Official hardware compatibility is a lot worse than with CUDA, for both brand new and aging hardware. Meanwhile versions by community already do fix some incompatibilities, bugs and even keep support for dropped architectures. But then we come back to the problem of how hard the stack is to package. Also there is only so long community can keep older architectures working, as some points things break, and noone will ever fix them
- -  With how few architectures a specific release supports both distributions and software would have to support multiple ones. While the final nail in the coffin is necessity for separate kernels for every possible GPU die.
+ - AMD needs to release CDNA for consumers, or support RDNA better for compute
+ - With how few architectures a specific release supports both distributions and software would have to support multiple ones. While the final nail in the coffin is necessity for separate kernels for every possible GPU die.
 
 Sources:
 
@@ -549,4 +524,10 @@ Sources:
 [^11]: https://www.techpowerup.com/gpu-specs/radeon-rx-580.c2938
 
 [^12]: https://www.notebookcheck.net/AMD-Radeon-RX-Vega-7-Graphics-Card-Benchmarks-and-Specs.450004.0.html
+
+[^13]: https://gpuopen.com/performance/
+
+[^14]: https://rocmdocs.amd.com/en/latest/GCN_ISA_Manuals/testdocbook.html#data-sharing
+
+[^15]: https://www.anandtech.com/show/4455/amds-graphics-core-next-preview-amd-architects-for-compute/3
 
